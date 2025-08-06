@@ -1,4 +1,4 @@
-package com.cashcontrol.presentation.categoria
+package com.cashcontrol.presentation.transaccion
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,31 +33,37 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cashcontrol.R
 import com.cashcontrol.data.local.entities.CategoriaEntity
+import com.cashcontrol.data.local.entities.TransaccionEntity
 import com.cashcontrol.presentation.composables.CashControlAppBar
 import com.cashcontrol.presentation.composables.PillButton
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
-fun CategoriaListScreen(
-    viewModel: CategoriaViewModel = hiltViewModel(),
-    goToCategoria: (Long?) -> Unit,
+fun TransaccionListScreen(
+    viewModel: TransaccionViewModel = hiltViewModel(),
+    goToTransaccion: (Long?) -> Unit,
     goBack: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    ListadoCategoria(
+    ListadoTransaccion(
         uiState = uiState,
-        goBack = { goBack },
-        goToCategoria = { goToCategoria(it) },
-        onDeleteClick = { viewModel.onEvent(CategoriaEvent.Delete(it)) },
-        verTiposCategoria = { viewModel.getCategoriasPorTipo(it) },
+        goBack = goBack,
+        goToTransaccion = { goToTransaccion(it) },
+        onDeleteClick = { viewModel.onEvent(TransaccionEvent.Delete(it)) },
+        verTiposCategoria = { viewModel.onEvent(TransaccionEvent.GetTransacciones(it)) },
+        onUsarEnSugerenciaClick = { viewModel.onEvent(TransaccionEvent.UsarEnSugerenciaChange(it)) },
     )
 }
 
 @Composable
-fun ListadoCategoria(
-    uiState: CategoriaUiState,
+fun ListadoTransaccion(
+    uiState: TransaccionUiState,
     goBack: () -> Unit,
-    goToCategoria: (Long?) -> Unit,
-    onDeleteClick: (CategoriaEntity) -> Unit,
+    goToTransaccion: (Long?) -> Unit,
+    onDeleteClick: (TransaccionEntity) -> Unit,
+    onUsarEnSugerenciaClick: (Boolean) -> Unit,
     verTiposCategoria: (String) -> Unit,
 ) {
     Scaffold(
@@ -65,13 +72,13 @@ fun ListadoCategoria(
             CashControlAppBar(
                 icono = Icons.AutoMirrored.Filled.ArrowBack,
                 goBack = { goBack() },
-                titulo = stringResource(R.string.lista_categoria),
+                titulo = stringResource(R.string.lista_transaccion),
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    goToCategoria(0)
+                    goToTransaccion(0)
                 },
                 containerColor = MaterialTheme.colorScheme.tertiary,
                 contentColor = MaterialTheme.colorScheme.onTertiary,
@@ -86,7 +93,7 @@ fun ListadoCategoria(
                 .padding(innerPadding)
         ) {
             val opciones = listOf("Gastos", "Ingresos")
-            var seleccionActual by remember { mutableStateOf(0) }
+            var seleccionActual by remember { mutableIntStateOf(0) }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -98,7 +105,7 @@ fun ListadoCategoria(
                         estadoInicialSeleccion = index == seleccionActual,
                         onClick = {
                             seleccionActual = index
-                            verTiposCategoria(texto)
+                            verTiposCategoria(texto.uppercase())
                         }
                     )
                 }
@@ -126,11 +133,35 @@ fun ListadoCategoria(
                         }
                     }
                 } else {
-                    items(uiState.listaCategoria) {
-                        CategoriaCard(
-                            descripcion = it.descripcion,
-                            onEditarClick = { goToCategoria(it.categoriaId) },
-                            onEliminarClick = { onDeleteClick(it) }
+                    items(uiState.listaTransacciones) { transaccion ->
+                        var descripcionCategoria = uiState.listaCategoriasFiltradas.find {
+                            it.categoriaId == transaccion.categoriaId
+                        }?.descripcion ?: "N/D"
+
+                        var tipoCategoria = uiState.listaCategoriasFiltradas.find {
+                            it.categoriaId == transaccion.categoriaId
+                        }?.tipo ?: "INGRESOS"
+
+                        var dateFormatter = remember {
+                            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        }
+
+                        // Texto formateado
+                        var fechaFormateada = remember(transaccion.fechaTransaccion) {
+                            dateFormatter.format(transaccion.fechaTransaccion)
+                        }
+
+                        TransaccionCard(
+                            monto = transaccion.monto,
+                            desripcionCategoria = descripcionCategoria,
+                            tipoCategoria = tipoCategoria,
+                            descripcionTransaccion = transaccion.descripcion,
+                            fecha = transaccion.fechaTransaccion.toString(),
+                            estadoInicialUsoEnSugerencia = transaccion.usarSugerencia,
+                            onSuggestionChange = { onUsarEnSugerenciaClick(transaccion.usarSugerencia) },
+                            onEdit = { goToTransaccion(transaccion.transaccionId) },
+                            onDelete = { onDeleteClick(transaccion) },
+                            transaccionId = transaccion.transaccionId!!,
                         )
                     }
                 }
@@ -142,32 +173,56 @@ fun ListadoCategoria(
 @Preview
 @Composable
 fun PreviewCategoriaListScreen() {
-    ListadoCategoria(
-        uiState = CategoriaUiState(
-            listaCategoria = listOf(
+    ListadoTransaccion(
+        uiState = TransaccionUiState(
+            listaTransacciones = listOf(
+                TransaccionEntity(
+                    transaccionId = 1,
+                    usuarioId = 1,
+                    categoriaId = 1,
+                    monto = 523500.45,
+                    fechaTransaccion = Date(),
+                    usarSugerencia = false,
+                    descripcion = "Pago quincenal"
+                ),
+                TransaccionEntity(
+                    transaccionId = 2,
+                    usuarioId = 1,
+                    categoriaId = 1,
+                    monto = 523500.45,
+                    fechaTransaccion = Date(),
+                    usarSugerencia = true,
+                    descripcion = "Pago quincenal"
+                ),
+                TransaccionEntity(
+                    transaccionId = 3,
+                    usuarioId = 1,
+                    categoriaId = 2,
+                    monto = 14254.45,
+                    fechaTransaccion = Date(),
+                    usarSugerencia = true,
+                    descripcion = "Descripcion"
+                ),
+            ),
+            listaCategoriasFiltradas = listOf(
                 CategoriaEntity(
                     categoriaId = 1,
                     usuarioId = 1,
-                    tipo = "",
-                    descripcion = "Ejemplo 1"
+                    tipo = "GASTOS",
+                    descripcion = "Prueba gasto"
                 ),
                 CategoriaEntity(
                     categoriaId = 2,
                     usuarioId = 1,
-                    tipo = "",
-                    descripcion = "Ejemplo 2"
-                ),
-                CategoriaEntity(
-                    categoriaId = 3,
-                    usuarioId = 1,
-                    tipo = "",
-                    descripcion = "Ejemplo 3"
+                    tipo = "INGRESOS",
+                    descripcion = "Prueba ingreso"
                 ),
             )
         ),
-        goToCategoria = {},
+        goToTransaccion = {},
         goBack = {},
         onDeleteClick = {},
         verTiposCategoria = {},
+        onUsarEnSugerenciaClick = {},
     )
 }
